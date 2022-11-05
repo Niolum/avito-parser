@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas import UserInDB, TokenData, UserCreate, TagBase
+from app.schemas import UserInDB, TokenData, UserCreate, TagBase, TagUpdate, UserUpdate
 from app.models import User, Tag
 
 from config_local import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -40,6 +40,15 @@ def create_user(db: Session, user: UserCreate):
     return db_user
 
 
+def update_username(db: Session, username: str, user: UserUpdate):
+    db_user = get_user_by_name(db=db, username=username)
+    db_user.username = user.username
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
 def get_user(db, username: str):
     if username in db:
         user_dict = db[username]
@@ -55,12 +64,32 @@ def authenticate_user(db: Session, username: str, password: str):
     return user
 
 
-def create_tag(db: Session, tag: TagBase):
-    db_tag = Tag(title=tag.title)
+def create_tag(db: Session, tag: TagBase, user: User):
+    db_tag = Tag(title=tag.title, user_id=user.id)
     db.add(db_tag)
     db.commit()
     db.refresh(db_tag)
     return db_tag
+
+
+def get_tag_by_name(db:Session, title: str):
+    return db.query(Tag).filter(Tag.title == title).first()
+
+
+def update_tag(db: Session, tag_id: id, tag: TagUpdate):
+    db_tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    db_tag.title = tag.title
+    db.add(db_tag)
+    db.commit()
+    db.refresh(db_tag)
+    return db_tag
+
+
+def delete_tag(db: Session, title: str):
+    db_tag = db.query(Tag).filter(Tag.title == title).first()
+    db.delete(db_tag)
+    db.commit()
+    return {"message": f"Successfully deleted tag {title}"}
 
 
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
@@ -95,6 +124,6 @@ async def get_current_user(db: Session = Depends(get_db), token: str = Depends(o
 
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
-    if current_user.disabled:
+    if not current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user

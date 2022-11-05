@@ -4,19 +4,22 @@ from fastapi import Depends, HTTPException, status, APIRouter
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-# from app.main import app
-from app.schemas import Token, UserBase, UserCreate, User, TagBase
+from app.schemas import Token, UserBase, UserCreate, UserUpdate, User, TagBase, TagUpdate
 from app.database import get_db
 from app.utils import (
     authenticate_user, 
     create_access_token, 
     get_user_by_name, 
-    create_user, 
+    create_user,
+    update_username,
+    get_current_user,
     get_current_active_user,
     create_tag,
+    update_tag,
+    delete_tag,
+    get_tag_by_name
 )
 from config import ACCESS_TOKEN_EXPIRE_MINUTES
-# from app.crud import get_user_by_name, create_user
 
 
 router = APIRouter(
@@ -55,8 +58,29 @@ async def read_users_me(create_user: User = Depends(get_current_active_user)):
     return create_user
 
 
+@router.put("/me/username-update/{username}", response_model=UserBase)
+async def update_user_username(username: str, user: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if username != current_user.username:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return update_username(db=db, username=username, user=user)
+
+
+
 @router.post("/create-tag/", response_model=TagBase)
-async def create_new_tag(tag: TagBase, db: Session = Depends(get_db)):
-    # if not get_current_active_user():
-    #       raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-    return create_tag(db=db, tag=tag)
+async def create_new_tag(tag: TagBase, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return create_tag(db=db, tag=tag, user=current_user)
+
+
+@router.put("/update-tag/{tag_id}", response_model=TagBase)
+async def update_tag_title(tag_id: int, tag: TagUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not tag_id in current_user.tags:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return update_tag(db=db, tag_id=tag_id, tag=tag)
+
+
+@router.delete("/delete-tag/{title}")
+async def tag_delete(title: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    tag = get_tag_by_name(db=db, title=title)
+    if not tag.id in current_user.tags:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return delete_tag(db=db, title=title)
