@@ -23,9 +23,12 @@ class UserCreate(UserBase):
     password: str
 
 
+class UserUpdate(UserBase):
+    pass
+
+
 class User(UserBase):
     id: int
-    tag_id: int
 
 
 class UserInDB(User):
@@ -35,6 +38,14 @@ class UserInDB(User):
 class TagBase(BaseModel):
     title: str
 
+    class Config:
+        orm_mode = True
+
+
+class TagUpdate(TagBase):
+    pass
+
 
 class Tag(TagBase):
     id: int
+    user_id: int
