@@ -8,15 +8,15 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas import UserInDB, TokenData
-from app.crud import get_user_by_name
+from app.schemas import UserInDB, TokenData, UserCreate, TagBase
+from app.models import User, Tag
 
 from config_local import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 
-pwd_context = CryptContext(schemas=['bcrypt'], deprecated="auto")
+pwd_context = CryptContext(schemes=['bcrypt'], deprecated="auto")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/token")
 
 
 def verify_password(plain_password, hashed_password):
@@ -25,6 +25,19 @@ def verify_password(plain_password, hashed_password):
 
 def get_password_hash(password):
     return pwd_context.hash(password)
+
+
+def get_user_by_name(db: Session, username: str):
+    return db.query(User).filter(User.username == username).first()
+
+
+def create_user(db: Session, user: UserCreate):
+    hashed_password = get_password_hash(user.password)
+    db_user = User(username=user.username, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
 
 def get_user(db, username: str):
@@ -42,6 +55,14 @@ def authenticate_user(db: Session, username: str, password: str):
     return user
 
 
+def create_tag(db: Session, tag: TagBase):
+    db_tag = Tag(title=tag.title)
+    db.add(db_tag)
+    db.commit()
+    db.refresh(db_tag)
+    return db_tag
+
+
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -57,7 +78,7 @@ async def get_current_user(db: Session = Depends(get_db), token: str = Depends(o
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate crendentails",
-        headers={"WWW-Authenticate": "Bearer"}
+        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -71,3 +92,9 @@ async def get_current_user(db: Session = Depends(get_db), token: str = Depends(o
     if user is None:
         raise credentials_exception
     return user
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
